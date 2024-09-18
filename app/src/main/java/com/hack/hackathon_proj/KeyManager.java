@@ -3,7 +3,6 @@ package com.hack.hackathon_proj;
 
 import android.content.Context;
 import android.security.keystore.KeyGenParameterSpec;
-import android.security.keystore.KeyInfo;
 import android.security.keystore.KeyProperties;
 import android.security.keystore.StrongBoxUnavailableException;
 import android.util.Log;
@@ -11,18 +10,14 @@ import android.util.Log;
 
 import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
-import java.security.KeyFactory;
-import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
-import java.security.PrivateKey;
 import java.security.UnrecoverableEntryException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.security.spec.InvalidKeySpecException;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Objects;
@@ -69,32 +64,22 @@ public class KeyManager {
         }
     }
 
-    public KeyPair getKeyPair() throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException, UnrecoverableEntryException {
+    private boolean isKeyPresent() throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException {
         KeyStore keyStore = KeyStore.getInstance(context.getString(R.string.KEYSTORE_PROVIDER));
         keyStore.load(null);
-
-        if (!keyStore.containsAlias( context.getString(R.string.KEY_ALIAS))) {
-            return null;
-        }
-
-        KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry( context.getString(R.string.KEY_ALIAS), null);
-        PrivateKey privateKey = privateKeyEntry.getPrivateKey();
-        X509Certificate certificate = (X509Certificate) privateKeyEntry.getCertificate();
-
-        return new KeyPair(certificate.getPublicKey(), privateKey);
+        return (keyStore.containsAlias( context.getString(R.string.KEY_ALIAS)));
     }
 
-    public boolean isKeyExpired() throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException, UnrecoverableEntryException {
+    public boolean isKeyExpired() throws KeyStoreException, CertificateException, IOException, NoSuchAlgorithmException {
         KeyStore keyStore = KeyStore.getInstance(context.getString(R.string.KEYSTORE_PROVIDER));
         keyStore.load(null);
 
-        if (!keyStore.containsAlias( context.getString(R.string.KEY_ALIAS))) {
-            return true;
-        }
+        X509Certificate cert = (X509Certificate) keyStore.getCertificate(context.getString(R.string.KEY_ALIAS));
 
-        KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry( context.getString(R.string.KEY_ALIAS), null);
-        X509Certificate certificate = (X509Certificate) privateKeyEntry.getCertificate();
-        return certificate.getNotAfter().before(new Date());
+        Date notAfter = cert.getNotAfter();
+        Date now = new Date();
+
+        return now.after(notAfter);
     }
 
     public void revokeKey() throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException {
@@ -106,42 +91,22 @@ public class KeyManager {
         }
     }
 
-    public boolean isKeyInsideHardware() throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException, UnrecoverableEntryException, NoSuchProviderException, InvalidKeySpecException {
-        KeyStore keyStore = KeyStore.getInstance(context.getString(R.string.KEYSTORE_PROVIDER));
-        keyStore.load(null);
-
-        KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry( context.getString(R.string.KEY_ALIAS), null);
-        PrivateKey privateKey = privateKeyEntry.getPrivateKey();
-
-        KeyFactory factory = KeyFactory.getInstance(privateKey.getAlgorithm(), context.getString(R.string.KEYSTORE_PROVIDER));
-        KeyInfo keyInfo = factory.getKeySpec(privateKey, KeyInfo.class);
-
-        return keyInfo.isInsideSecureHardware();
-    }
-
     private Date getValidityEndDate() {
         Calendar calendar = Calendar.getInstance();
         calendar.add(Calendar.DAY_OF_YEAR, context.getResources().getInteger(R.integer.KEY_VALIDITY_DURATION));
         return calendar.getTime();
     }
 
-    public void generateKeyIfNeeded() throws NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, UnrecoverableEntryException, CertificateException, KeyStoreException, IOException, InvalidKeySpecException {
-        if (getKeyPair() == null) {
+    public void generateKeyIfNeeded() throws NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, UnrecoverableEntryException, CertificateException, KeyStoreException, IOException {
+
+        if(!isKeyPresent())
+        {
             generate();
         }
-        else
+        else if(isKeyExpired())
         {
-            if(isKeyExpired())
-            {
-                revokeKey();
-                generate();
-            }
+            revokeKey();
+            generate();
         }
-
-
-        KeyPair keyPair = getKeyPair();
-
-        Log.d("KeyManager",String.format("Public Key: %s", keyPair.getPublic().toString()));
-        Log.d("KeyManager", String.format("Is key secured in hardware: %b", isKeyInsideHardware()));
     }
 }
