@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace = "com.hack.hackathon_proj"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.hack.hackathon_proj"
         minSdk = 28
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -47,4 +47,10 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.3.4")
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")
+
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    implementation ("org.jmdns:jmdns:3.5.12")
+
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 }

@@ -1,16 +1,16 @@
 package com.hack.hackathon_proj;
 
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
-import android.os.PersistableBundle;
+import android.provider.Settings;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 import android.Manifest;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageCapture;
@@ -20,24 +20,27 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.lifecycle.Lifecycle;
-import androidx.lifecycle.LifecycleOwner;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Date;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 
 
 public class CameraActivity extends AppCompatActivity {
 
-    private Button captureButt;
     private ListenableFuture<ProcessCameraProvider> cameraProviderListenableFuture;
 
     private PreviewView previewView;
 
     private ImageCapture imageCapture;
+
+    private int id;
+
+    private Button captureButt;
 
 
     // Define the permission request code
@@ -61,73 +64,100 @@ public class CameraActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission granted, initialize camera
-                cameraProviderListenableFuture = ProcessCameraProvider.getInstance(this);
-                cameraProviderListenableFuture.addListener(() -> {
-                    try {
-                        ProcessCameraProvider cameraProvider = cameraProviderListenableFuture.get();
-                        startCameraX(cameraProvider);
-                    } catch (ExecutionException | InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }, getMainExecutor());
-            } else {
-                // Permission denied, show rationale or toast
-                Toast.makeText(this, "Camera permission denied", Toast.LENGTH_SHORT).show();
+            if (!(grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
+                if (ActivityCompat.shouldShowRequestPermissionRationale(this, CAMERA_PERMISSION)) {
+                    // Request permission again
+                    requestCameraPermission();
+                } else {
+                    // Redirect to settings
+                    openSettings();
+                    Toast.makeText(this, "Please enable camera permission in settings.", Toast.LENGTH_SHORT).show();
+                }
             }
         }
+    }
+
+    private void openSettings() {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        Uri uri = Uri.fromParts("package", getPackageName(), null);
+        intent.setData(uri);
+        startActivity(intent);
+    }
+
+    private void initializeCamera() {
+        cameraProviderListenableFuture = ProcessCameraProvider.getInstance(this);
+        cameraProviderListenableFuture.addListener(() -> {
+            try {
+                ProcessCameraProvider cameraProvider = cameraProviderListenableFuture.get();
+                if (cameraProvider != null) {
+                    startCameraX(cameraProvider);
+                } else {
+                    Log.d("CameraActivity", "Camera provider is null");
+                }
+            } catch (ExecutionException | InterruptedException e) {
+                Log.d("CameraActivity", "Error initializing camera: " + e.getMessage());
+            }
+        }, getExecutor());
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_camera);
-
-        captureButt = findViewById(R.id.capture_button);
         previewView = findViewById(R.id.preview_view);
-        captureButt.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                capturePhoto();
-            }
-        });
 
+        Intent intent = getIntent();
+        id = intent.getIntExtra("ID", 0);
+        captureButt = findViewById(R.id.capture_button);
+
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
         if (hasCameraPermission()) {
-            // Permission already granted, initialize camera
-            cameraProviderListenableFuture = ProcessCameraProvider.getInstance(this);
-            cameraProviderListenableFuture.addListener(() -> {
+            initializeCamera();
+            captureButt.setOnClickListener(v -> {
                 try {
-                    ProcessCameraProvider cameraProvider = cameraProviderListenableFuture.get();
-                    startCameraX(cameraProvider);
-                } catch (ExecutionException | InterruptedException e) {
-                    e.printStackTrace();
+                    capturePhoto();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
                 }
-            }, getMainExecutor());
+            });
         } else {
-            // Request camera permission
             requestCameraPermission();
         }
     }
 
-    private void capturePhoto() {
-        File directory = getFilesDir();
+    private void capturePhoto() throws IOException {
+        File directory = new File(getFilesDir(), String.valueOf(id));
+        if (!directory.exists()) {
+            if(!directory.mkdirs())
+            {
+                throw new IOException("Failed to create directory.");
+            }
+        }
+
         Date date = new Date();
         String timestamp = String.valueOf(date.getTime());
 
-        String imgpath = directory.getAbsolutePath() + "/" + timestamp + ".jpg";
+        String imgpath = directory.getAbsolutePath() + "/" + "face" + ".jpg"; // Append timestamp to filename
 
         File imgFile = new File(imgpath);
 
         imageCapture.takePicture(
                 new ImageCapture.OutputFileOptions.Builder(imgFile).build(),
-                getMainExecutor(),
+                getExecutor(),
                 new ImageCapture.OnImageSavedCallback()
                 {
 
                     @Override
                     public void onImageSaved(@NonNull ImageCapture.OutputFileResults outputFileResults) {
                         Log.d("CameraActivity","Saved at " + imgpath);
+                        Intent returnIntent = new Intent();
+                        returnIntent.putExtra("timestamp", timestamp);
+                        setResult(RESULT_OK, returnIntent);
+                        finish();
                     }
 
                     @Override
@@ -151,6 +181,11 @@ public class CameraActivity extends AppCompatActivity {
         imageCapture = new ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build();
 
 
-        processCameraProvider.bindToLifecycle((LifecycleOwner) this, cameraSelector, preview, imageCapture);
+        processCameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture);
+    }
+
+    private Executor getExecutor()
+    {
+        return ContextCompat.getMainExecutor(this);
     }
 }

@@ -15,7 +15,6 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
-import java.security.UnrecoverableEntryException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Calendar;
@@ -97,7 +96,7 @@ public class KeyManager {
         return calendar.getTime();
     }
 
-    public void generateKeyIfNeeded() throws NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, UnrecoverableEntryException, CertificateException, KeyStoreException, IOException {
+    public void generateKeyIfNeeded() throws NoSuchAlgorithmException, NoSuchProviderException, InvalidAlgorithmParameterException, CertificateException, KeyStoreException, IOException {
 
         if(!isKeyPresent())
         {
