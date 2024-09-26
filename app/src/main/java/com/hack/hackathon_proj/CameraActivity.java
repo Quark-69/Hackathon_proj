@@ -130,18 +130,11 @@ public class CameraActivity extends AppCompatActivity {
     }
 
     private void capturePhoto() throws IOException {
-        File directory = new File(getFilesDir(), String.valueOf(id));
-        if (!directory.exists()) {
-            if(!directory.mkdirs())
-            {
-                throw new IOException("Failed to create directory.");
-            }
-        }
 
         Date date = new Date();
         String timestamp = String.valueOf(date.getTime());
 
-        String imgpath = directory.getAbsolutePath() + "/" + "face" + ".jpg"; // Append timestamp to filename
+        String imgpath = getFilesDir().getAbsolutePath() + "/" + id + "/" + "face" + ".jpg"; // Append timestamp to filename
 
         File imgFile = new File(imgpath);
 

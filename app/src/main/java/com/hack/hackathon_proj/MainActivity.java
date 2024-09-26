@@ -15,6 +15,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import java.io.File;
 import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyStoreException;
@@ -44,6 +45,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void prepareDataForSending(String timestamp) throws Exception {
         utilities.beginImageEncryption(timestamp);
+        utilities.createLog();
+        utilities.pack(getFilesDir().getAbsolutePath() + "/" + id + "/", getFilesDir().getAbsolutePath() + "/" + id + ".zip");
     }
 
 
@@ -72,7 +75,23 @@ public class MainActivity extends AppCompatActivity {
 
         keyManager = new KeyManager(this);
 
-        utilities = new Utilities(this, id);
+        File directory = new File(getFilesDir(), String.valueOf(id));
+        if (!directory.exists()) {
+            if(!directory.mkdirs())
+            {
+                try {
+                    throw new IOException("Failed to create directory.");
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+
+        try {
+            utilities = new Utilities(this, id);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
 
         Intent intent = getIntent();
         if (Objects.equals(intent.getAction(), "com.auth.ACTION_REQUEST_DATA")) {

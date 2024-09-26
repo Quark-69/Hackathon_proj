@@ -1,9 +1,12 @@
 package com.hack.hackathon_proj;
 
 import android.content.Context;
+import android.os.Build;
 import android.util.Log;
 
 import org.bouncycastle.util.io.pem.PemReader;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -12,11 +15,17 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import javax.crypto.Cipher;
+import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -37,12 +46,19 @@ public class Utilities {
     private final String serverIp;
     private final int port;
 
-    public Utilities(Context context, int id)
-    {
+    byte[] aes_key;
+    byte[] iv;
+
+    public Utilities(Context context, int id) throws Exception {
         this.context = context;
         this.id = id;
         serverIp = "192.168.122.1";
         port = 8010;
+
+        aes_key = GenerateSecurePattern(32);
+        iv = GenerateSecurePattern(16);
+
+        EncryptAESkey(aes_key);
     }
 
 
@@ -85,10 +101,9 @@ public class Utilities {
         EncryptImage();
     }
 
-    private void EncryptImage() throws Exception {
+    private void EncryptWithAES(String filename) throws Exception {
 
-        byte[] aes_key = GenerateSecurePattern(32);
-        byte[] iv = GenerateSecurePattern(16);
+        String[] parts = filename.split("\\.");
 
         SecretKeySpec secretKeySpec = new SecretKeySpec(aes_key, "AES");
         IvParameterSpec ivSpec = new IvParameterSpec(iv);
@@ -96,22 +111,25 @@ public class Utilities {
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ivSpec);
 
-        File imageFile = new File(context.getFilesDir().getAbsolutePath() + "/" + id + "/" + "face.jpg");
-        byte[] imageBytes = Files.readAllBytes(imageFile.toPath());
+        File file = new File(context.getFilesDir().getAbsolutePath() + "/" + id + "/" + filename);
+        byte[] fileBytes = Files.readAllBytes(file.toPath());
 
-        byte[] encryptedImage = cipher.doFinal(imageBytes);
+        byte[] encryptedFile = cipher.doFinal(fileBytes);
 
-        String encryptedImagePath = context.getFilesDir().getAbsolutePath() + "/" + id + "/" + "encrypted_face.enc";
-        FileOutputStream fileOutputStream = new FileOutputStream(encryptedImagePath);
+        String encryptedFilePath = context.getFilesDir().getAbsolutePath() + "/" + id + "/" + "encrypted_" + parts[0] + "." + parts[1];
+        FileOutputStream fileOutputStream = new FileOutputStream(encryptedFilePath);
         fileOutputStream.write(iv);
-        fileOutputStream.write(encryptedImage);
+        fileOutputStream.write(encryptedFile);
         fileOutputStream.close();
 
-        if(!imageFile.delete())
+        if(!file.delete())
         {
-            throw new IOException("Failed to delete file: " + imageFile.getAbsolutePath());
+            throw new IOException("Failed to delete file: " + file.getAbsolutePath());
         }
-        EncryptAESkey(aes_key);
+    }
+
+    private void EncryptImage() throws Exception {
+        EncryptWithAES("face.jpg");
     }
 
     private void EncryptAESkey(byte[] aes_key) throws Exception {
@@ -133,4 +151,41 @@ public class Utilities {
         fileOutputStream.close();
     }
 
+    public void pack(String sourceDirPath, String zipFilePath) throws IOException {
+        Path p = Files.createFile(Paths.get(zipFilePath));
+        try (ZipOutputStream zs = new ZipOutputStream(Files.newOutputStream(p))) {
+            Path pp = Paths.get(sourceDirPath);
+            Files.walk(pp)
+                    .filter(path -> !Files.isDirectory(path))
+                    .forEach(path -> {
+                        ZipEntry zipEntry = new ZipEntry(pp.relativize(path).toString());
+                        try {
+                            zs.putNextEntry(zipEntry);
+                            Files.copy(path, zs);
+                            zs.closeEntry();
+                        } catch (IOException e) {
+                            Log.d("Utilities", "Failed to pack.");
+                        }
+                    });
+        }
+    }
+
+    public void createLog() throws Exception {
+        JSONObject log = new JSONObject();
+        log.put("os_type", "Android");
+        log.put("os_version", Build.VERSION.RELEASE);
+        log.put("device_model", Build.MODEL);
+        log.put("timestamp", timestamp);
+
+        try {
+            File file = new File(context.getFilesDir().getAbsoluteFile() + "/" + id  + "/", "log.json");
+            FileOutputStream writer = new FileOutputStream(file);
+            writer.write(log.toString().getBytes());
+            writer.close();
+        } catch (Exception e) {
+            Log.e("Error", "Saving JSON to file: " + e.getMessage());
+        }
+
+        EncryptWithAES("log.json");
+    }
 }

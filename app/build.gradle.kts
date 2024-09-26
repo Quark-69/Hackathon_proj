@@ -53,4 +53,6 @@ dependencies {
     implementation ("org.jmdns:jmdns:3.5.12")
 
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+
+    implementation ("org.json:json:20240303")
 }
