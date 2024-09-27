@@ -38,12 +38,12 @@ public class KeyManager {
                 context.getString(R.string.KEY_ALIAS),
                 KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
                 .setDigests(KeyProperties.DIGEST_SHA256)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_RSA_OAEP)
+                .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
                 .setKeySize(2048)
                 .setUserAuthenticationRequired(false)
                 .setKeyValidityStart(Calendar.getInstance().getTime())
                 .setKeyValidityEnd(getValidityEndDate())
-                .setIsStrongBoxBacked(true);  // Request StrongBox backing
+                .setIsStrongBoxBacked(true);
 
         try {
             keyPairGenerator.initialize(builder.build());

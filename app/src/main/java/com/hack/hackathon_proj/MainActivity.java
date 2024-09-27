@@ -17,13 +17,6 @@ import androidx.core.view.WindowInsetsCompat;
 
 import java.io.File;
 import java.io.IOException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.UnrecoverableEntryException;
-import java.security.cert.CertificateException;
-import java.security.spec.InvalidKeySpecException;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
@@ -46,11 +39,13 @@ public class MainActivity extends AppCompatActivity {
     private void prepareDataForSending(String timestamp) throws Exception {
         utilities.beginImageEncryption(timestamp);
         utilities.createLog();
+        utilities.signData(getFilesDir().getAbsolutePath() + "/" + id + "/");
         utilities.pack(getFilesDir().getAbsolutePath() + "/" + id + "/", getFilesDir().getAbsolutePath() + "/" + id + ".zip");
+        utilities.deleteDir(new File(getFilesDir().getAbsolutePath() + "/" + id + "/"));
     }
 
 
-    private void ManageKey() throws InvalidAlgorithmParameterException, UnrecoverableEntryException, CertificateException, NoSuchAlgorithmException, KeyStoreException, IOException, InvalidKeySpecException, NoSuchProviderException {
+    private void ManageKey() throws Exception{
         keyManager.generateKeyIfNeeded();
     }
 
@@ -102,9 +97,7 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             ManageKey();
-        } catch (InvalidAlgorithmParameterException | UnrecoverableEntryException |
-                 CertificateException | NoSuchAlgorithmException | KeyStoreException | IOException |
-                 InvalidKeySpecException | NoSuchProviderException e) {
+        } catch (Exception e) {
             Log.e("MainActivity", "Error managing key: ", e);
         }
 

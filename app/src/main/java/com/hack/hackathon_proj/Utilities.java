@@ -5,7 +5,6 @@ import android.os.Build;
 import android.util.Log;
 
 import org.bouncycastle.util.io.pem.PemReader;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -14,18 +13,16 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.security.KeyFactory;
-import java.security.NoSuchAlgorithmException;
-import java.security.PublicKey;
-import java.security.SecureRandom;
+import java.security.*;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Comparator;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 import javax.crypto.Cipher;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -187,5 +184,58 @@ public class Utilities {
         }
 
         EncryptWithAES("log.json");
+    }
+
+    private void sign(String filePath)
+    {
+        try {
+            KeyStore keyStore = KeyStore.getInstance(context.getString(R.string.KEYSTORE_PROVIDER));
+            keyStore.load(null);
+            PrivateKey privateKey = (PrivateKey) keyStore.getKey(context.getString(R.string.KEY_ALIAS), null);
+
+            File file = new File(filePath);
+            byte[] fileContent = Files.readAllBytes(file.toPath());
+
+            Signature signature = Signature.getInstance("SHA256withRSA");
+            signature.initSign(privateKey);
+            signature.update(fileContent);
+            byte[] signedHash = signature.sign();
+
+            // Save the signed hash to a file with the same name and a .sig extension
+            FileOutputStream fos = new FileOutputStream(file.getAbsolutePath() + ".sig");
+            fos.write(signedHash);
+            fos.close();
+
+           Log.d("Utilities","Signed " + file.getName() + " successfully.");
+
+        } catch (Exception e) {
+           Log.d("Utilities", "Failed to sign file.");
+        }
+    }
+
+    public void signData(String folderPath) {
+        File folder = new File(folderPath);
+        if (folder.exists() && folder.isDirectory()) {
+            // Get all files in the folder
+            File[] files = folder.listFiles((dir, name) -> new File(dir, name).isFile());
+
+            if (files != null) {
+                for (File file : files) {
+                    sign(file.getAbsolutePath());
+                }
+            } else {
+                Log.d("Utilities", "No files found in the directory.");
+            }
+        } else {
+            Log.d("Utilities","Invalid directory.");
+        }
+    }
+
+    public void deleteDir(File dir) throws IOException {
+        try (Stream<Path> pathStream = Files.walk(dir.toPath())) {
+            pathStream.sorted(Comparator.reverseOrder())
+                    .map(Path::toFile)
+                    .forEach(File::delete);
+        }
     }
 }
