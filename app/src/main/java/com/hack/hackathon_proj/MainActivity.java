@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
@@ -37,11 +38,10 @@ public class MainActivity extends AppCompatActivity {
 
 
     private void prepareDataForSending(String timestamp) throws Exception {
-        utilities.beginImageEncryption(timestamp);
-        utilities.createLog();
+        utilities.beginEncryption(timestamp);
         utilities.signData(getFilesDir().getAbsolutePath() + "/" + id + "/");
         utilities.pack(getFilesDir().getAbsolutePath() + "/" + id + "/", getFilesDir().getAbsolutePath() + "/" + id + ".zip");
-        utilities.deleteDir(new File(getFilesDir().getAbsolutePath() + "/" + id + "/"));
+        utilities.cleanDir(new File(getFilesDir().getAbsolutePath() + "/" + id + "/"));
     }
 
 
@@ -70,6 +70,11 @@ public class MainActivity extends AppCompatActivity {
 
         keyManager = new KeyManager(this);
 
+        Intent intent = getIntent();
+        if (Objects.equals(intent.getAction(), "com.auth.ACTION_AUTHENTICATE")) {
+            id = intent.getIntExtra("ID", 0);
+        }
+
         File directory = new File(getFilesDir(), String.valueOf(id));
         if (!directory.exists()) {
             if(!directory.mkdirs())
@@ -82,18 +87,10 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        try {
-            utilities = new Utilities(this, id);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-
-        Intent intent = getIntent();
-        if (Objects.equals(intent.getAction(), "com.auth.ACTION_REQUEST_DATA")) {
-            id = intent.getIntExtra("ID", 0);
-        }
+        utilities = new Utilities(this, id);
 
         Button cameraButton = findViewById(R.id.Camera);
+        ProgressBar progressBar = findViewById(R.id.progressBar);
 
         try {
             ManageKey();
@@ -108,13 +105,21 @@ public class MainActivity extends AppCompatActivity {
                         assert data != null;
                         timestamp = data.getStringExtra("timestamp");
 
+                        runOnUiThread(() -> progressBar.setVisibility(View.VISIBLE));
+
                         CompletableFuture.runAsync(() -> utilities.downloadPublicKey())
                                 .thenRun(() -> {
+                                    Intent returnIntent = new Intent();
                                     try {
                                         prepareDataForSending(timestamp);
+                                        boolean authenticated = utilities.requestAuth();
+                                        returnIntent.putExtra("authenticated", authenticated);
                                     } catch (Exception e) {
                                         throw new RuntimeException(e);
                                     }
+                                    runOnUiThread(() -> progressBar.setVisibility(View.GONE));
+                                    setResult(RESULT_OK, returnIntent);
+                                    finish();
                                 });
 
                     }

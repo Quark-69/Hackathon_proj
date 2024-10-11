@@ -1,22 +1,27 @@
 package com.hack.hackathon_proj;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.Build;
+import android.provider.Settings;
 import android.util.Log;
 
+import org.apache.commons.io.FileUtils;
+import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
+import org.bouncycastle.util.io.pem.PemWriter;
 import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.security.*;
 import java.security.spec.X509EncodedKeySpec;
-import java.util.Comparator;
-import java.util.stream.Stream;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import java.nio.file.Path;
@@ -26,8 +31,11 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 
 
@@ -40,31 +48,28 @@ public class Utilities {
 
     private String timestamp;
 
-    private final String serverIp;
-    private final int port;
+    private final byte[] aes_key;
+    private final byte[] iv;
 
-    byte[] aes_key;
-    byte[] iv;
 
-    public Utilities(Context context, int id) throws Exception {
+    private final String severUrl;
+
+    public Utilities(Context context, int id){
         this.context = context;
         this.id = id;
-        serverIp = "192.168.122.1";
-        port = 8010;
-
+        severUrl = "https://kx6j3ih30gna.share.zrok.io";
         aes_key = GenerateSecurePattern(32);
         iv = GenerateSecurePattern(16);
-
-        EncryptAESkey(aes_key);
     }
 
 
 
     public void downloadPublicKey() {
-        String url = "http://" + serverIp + ":" + port + "/" + "publickey";
+        String url = severUrl + "/publickey";
         File file = new File(context.getFilesDir().getAbsolutePath() + "/" + "public_key.pem");
 
-        OkHttpClient client = new OkHttpClient();
+        OkHttpClient client = new OkHttpClient.Builder()
+                .build();
         Request request = new Request.Builder()
                 .url(url)
                 .build();
@@ -93,9 +98,11 @@ public class Utilities {
         return  pattern;
     }
 
-    public void beginImageEncryption(String timestamp) throws Exception {
+    public void beginEncryption(String timestamp) throws Exception {
         this.timestamp = timestamp;
+        EncryptAESkey();
         EncryptImage();
+        createLog();
     }
 
     private void EncryptWithAES(String filename) throws Exception {
@@ -129,7 +136,7 @@ public class Utilities {
         EncryptWithAES("face.jpg");
     }
 
-    private void EncryptAESkey(byte[] aes_key) throws Exception {
+    private void EncryptAESkey() throws Exception {
         PemReader pemReader = new PemReader(new FileReader( context.getFilesDir().getAbsolutePath() + "/" + "public_key.pem"));
         byte[] publicKeyBytes = pemReader.readPemObject().getContent();
         pemReader.close();
@@ -148,8 +155,37 @@ public class Utilities {
         fileOutputStream.close();
     }
 
-    public void pack(String sourceDirPath, String zipFilePath) throws IOException {
-        Path p = Files.createFile(Paths.get(zipFilePath));
+
+    private void savePubKey(String filePath) throws Exception
+    {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        KeyStore.Entry entry = keyStore.getEntry(context.getString(R.string.KEY_ALIAS), null);
+
+        assert entry != null;
+        PublicKey publicKey = ((KeyStore.PrivateKeyEntry) entry).getCertificate().getPublicKey();
+
+        try (FileWriter fileWriter = new FileWriter(filePath);
+             PemWriter pemWriter = new PemWriter(fileWriter)) {
+            pemWriter.writeObject(new PemObject("PUBLIC KEY", publicKey.getEncoded()));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to write public key to file", e);
+        }
+
+    }
+
+    public void pack(String sourceDirPath, String zipFilePath) throws Exception {
+
+        savePubKey(context.getFilesDir().getAbsolutePath() + "/" + id + "/user_public_key.pem");
+
+
+        Path zipPath = Paths.get(zipFilePath);
+
+        if (Files.exists(zipPath)) {
+            Files.delete(zipPath);
+        }
+
+        Path p = Files.createFile(zipPath);
         try (ZipOutputStream zs = new ZipOutputStream(Files.newOutputStream(p))) {
             Path pp = Paths.get(sourceDirPath);
             Files.walk(pp)
@@ -167,11 +203,13 @@ public class Utilities {
         }
     }
 
+    @SuppressLint("HardwareIds")
     public void createLog() throws Exception {
         JSONObject log = new JSONObject();
-        log.put("os_type", "Android");
+        log.put("device_type", "Android");
         log.put("os_version", Build.VERSION.RELEASE);
         log.put("device_model", Build.MODEL);
+        log.put("Android_ID",Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID));
         log.put("timestamp", timestamp);
 
         try {
@@ -201,7 +239,6 @@ public class Utilities {
             signature.update(fileContent);
             byte[] signedHash = signature.sign();
 
-            // Save the signed hash to a file with the same name and a .sig extension
             FileOutputStream fos = new FileOutputStream(file.getAbsolutePath() + ".sig");
             fos.write(signedHash);
             fos.close();
@@ -216,7 +253,6 @@ public class Utilities {
     public void signData(String folderPath) {
         File folder = new File(folderPath);
         if (folder.exists() && folder.isDirectory()) {
-            // Get all files in the folder
             File[] files = folder.listFiles((dir, name) -> new File(dir, name).isFile());
 
             if (files != null) {
@@ -231,11 +267,45 @@ public class Utilities {
         }
     }
 
-    public void deleteDir(File dir) throws IOException {
-        try (Stream<Path> pathStream = Files.walk(dir.toPath())) {
-            pathStream.sorted(Comparator.reverseOrder())
-                    .map(Path::toFile)
-                    .forEach(File::delete);
+    public void cleanDir(File dir) throws IOException {
+        FileUtils.cleanDirectory(dir);
+    }
+
+    public boolean requestAuth()
+    {
+        File zipFile = new File(context.getFilesDir().getAbsolutePath() + "/" + id + ".zip");
+        RequestBody zipRequestBody = RequestBody.create(zipFile, MediaType.get("application/zip"));
+
+        MultipartBody requestBody = new MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("file", zipFile.getName(), zipRequestBody)
+                .build();
+
+        Request request = new Request.Builder()
+                .url(severUrl + "/authorize" + "/" +id)
+                .post(requestBody)
+                .build();
+
+        OkHttpClient client = new OkHttpClient.Builder()
+                .connectTimeout(20, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (response.isSuccessful()) {
+                assert response.body() != null;
+                JSONObject jsonObject = new JSONObject(response.body().string());
+                String status = jsonObject.getString("status");
+                return status.equals("authenticated");
+            } else {
+                Log.d("Utilities", Integer.toString(response.code()));
+            }
+        } catch(Exception e)
+        {
+            e.printStackTrace();
         }
+
+        return false;
     }
 }
